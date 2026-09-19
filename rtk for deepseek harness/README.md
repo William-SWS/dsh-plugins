@@ -1,135 +1,141 @@
 # dsh-tool-rtk
 
-Uma linha de [Cordis](https://github.com/deepseek-ai/deepseek-harness) que dá a um
-agente dsh a tool **`rtk`** — um proxy para a CLI [RTK](https://github.com/rtk-ai/rtk)
-que filtra e resume a saída de comandos **antes** dela entrar no contexto do modelo.
+A single [Cordis](https://github.com/deepseek-ai/deepseek-harness) row that gives
+a dsh agent the **`rtk`** tool — a proxy for the
+[RTK](https://github.com/rtk-ai/rtk) CLI that filters and summarizes command
+output **before** it enters the model context.
 
-É daí que vem a economia: o agente roda `git status`, `cargo test`, `rg`, `ls -la`
-etc. através do RTK, e o que chega ao contexto é a versão compactada — tipicamente
-60–90% menos tokens de tool-output nos comandos do dia a dia.
+That is where the saving comes from: the agent runs `git status`, `cargo test`,
+`rg`, `ls -la` and so on through RTK, and what reaches the context is the
+compacted version — typically 60–90% fewer tool-output tokens on everyday
+commands.
 
-Este repositório entrega isso como um **agent preset** chamado `standard-rtk`
-(o preset `standard` + a tool `rtk`).
+This plugin ships that as an **agent preset** called `standard-rtk` (the
+`standard` preset + the `rtk` tool).
 
-## Pré-requisitos
+## Prerequisites
 
-1. **dsh** instalado.
-2. **`rtk` no PATH** — instale antes, senão a tool aparece mas toda chamada falha
-   com `[exit code: 127]`:
+1. **dsh** installed.
+2. **`rtk` on PATH** — install it first, otherwise the tool appears but every
+   call fails with `[exit code: 127]`:
 
    ```sh
    curl -fsSL https://raw.githubusercontent.com/rtk-ai/rtk/master/install.sh | sh
    ```
 
-   > **Cuidado com o nome.** Existem dois projetos chamados `rtk`: **Rust Token
-   > Killer** (`rtk-ai/rtk`, este) e **Rust Type Kit** (`reachingforthejack/rtk`,
-   > outro). Se `rtk --version` funciona mas `rtk gain` não mostra o painel de
-   > economia, você instalou o errado — `cargo install rtk` cai no outro. Confirme
-   > com `rtk gain`.
+   > **Mind the name.** Two projects are called `rtk`: **Rust Token Killer**
+   > (`rtk-ai/rtk`, this one) and **Rust Type Kit** (`reachingforthejack/rtk`,
+   > another one). If `rtk --version` works but `rtk gain` does not show the
+   > savings panel, you installed the wrong one — `cargo install rtk` lands on
+   > the other. Confirm with `rtk gain`.
 
-## Instalar
+## Install
 
 ```sh
-git clone <este-repo> ~/tools/dsh-plugins
-cd ~/tools/dsh-plugins
+git clone https://github.com/William-SWS/dsh-plugins ~/tools/dsh-plugins
+cd ~/tools/dsh-plugins/"rtk for deepseek harness"
 ./install.sh
 ```
 
-O instalador **nunca toca a instalação do dsh nem os presets shipped**. Ele:
+The installer **never touches your dsh installation or the shipped presets**.
+It:
 
-1. copia o **seu próprio** preset `standard` para `~/.dsh/.agent-presets/standard-rtk/`;
-2. anexa a linha `- id: tool-rtk` ao final da composição;
-3. copia `rtk.js` para dentro do preset;
-4. cria o shim de resolução `node_modules` (veja abaixo);
-5. carrega o plugin num processo Node novo para provar que ele resolve.
+1. copies **your own** `standard` preset into `~/.dsh/.agent-presets/standard-rtk/`;
+2. appends the row `- id: tool-rtk` to the end of the composition;
+3. copies `rtk.js` into the preset;
+4. creates the `node_modules` resolution shim (see below);
+5. loads the plugin in a fresh Node process to prove that it resolves.
 
-Se já existir um preset nesse id que **não** foi criado por este script, ele é
-movido para um `.bak-<timestamp>` em vez de ser apagado.
+If a preset with that id already exists and was **not** created by this script,
+it is moved to a `.bak-<timestamp>` instead of being deleted.
 
-Opções: `PRESET_ID`, `PRESET_NAME`, `SOURCE_PRESET`, `DSH_HOME`.
+Options: `PRESET_ID`, `PRESET_NAME`, `SOURCE_PRESET`, `DSH_HOME`.
 
-## Usar
+## Usage
 
-1. Em dsh, abra **Settings → Agent preset**.
-2. Inicie uma sessão no preset **“Coding + RTK”**.
-3. Confirme que a tool `rtk` aparece, e peça `rtk gain` para ver o painel.
+1. In dsh, open **Settings → Agent preset**.
+2. Start a session on the **“Coding + RTK”** preset.
+3. Confirm that the `rtk` tool shows up, and ask for `rtk gain` to see the panel.
 
-O plugin é **somente Host**: registra a tool no registry do host e não tem metade
-de browser, então não pede aprovação nenhuma — instalou, usa.
+The plugin is **Host-only**: it registers the tool in the host registry and has
+no browser half, so it asks for no approval at all — install it and use it.
 
-## Desinstalar
+## Uninstall
 
 ```sh
 ./install.sh --uninstall
 ```
 
-Remove só `~/.dsh/.agent-presets/standard-rtk`. O binário `rtk` fica.
+Removes only `~/.dsh/.agent-presets/standard-rtk`. The `rtk` binary stays.
 
-## Como funciona (as duas partes não óbvias)
+## How it works (the two non-obvious parts)
 
-**1. A linha mora no preset, não na composição do host.**
-O registry `tools` pertence ao host, mas o que um preset *contribui* para ele são
-as suas tools — é exatamente onde `tool-bash` e `tool-fs` moram no próprio
-`standard`. O plugin só **consome** serviços (`tools`, `shell`, e opcionalmente
-`shellEnv`/`sandboxPolicy`), então não publica service e não precisa de `isolate`
-realm. Se publicasse, o mount seria rejeitado.
+**1. The row lives in the preset, not in the host composition.**
+The `tools` registry belongs to the host, but what a preset *contributes* to it
+are its tools — which is exactly where `tool-bash` and `tool-fs` live in
+`standard` itself. The plugin only **consumes** services (`tools`, `shell`, and
+optionally `shellEnv`/`sandboxPolicy`), so it publishes no service and needs no
+`isolate` realm. If it published one, the mount would be rejected.
 
-**2. O `node_modules` dentro do preset é um shim de resolução.**
-`rtk.js` importa `@deepseek-ai/dsh-tools` (para o `defineTool`). Um arquivo sob
-`~/.dsh/.agent-presets/` **não alcança** os pacotes do harness: o walk do Node sobe
-por `~/.dsh/`, `~/` e `/`, e nenhum deles tem `@deepseek-ai/*`. O dsh resolve isso
-para *nomes de pacote* (ele reescreve o base dessas linhas para a instalação), mas
-não para os imports internos de um arquivo que ele carrega.
+**2. The `node_modules` inside the preset is a resolution shim.**
+`rtk.js` imports `@deepseek-ai/dsh-tools` (for `defineTool`). A file under
+`~/.dsh/.agent-presets/` **cannot reach** the harness packages: Node's walk goes
+up through `~/.dsh/`, `~/` and `/`, and none of them has `@deepseek-ai/*`. dsh
+solves this for *package names* (it rewrites the base of those rows to the
+installation), but not for the internal imports of a file that it loads.
 
-Por isso o preset leva um `node_modules` com um symlink para
-`<DSH_HOME>/profiles/node_modules/@deepseek-ai/dsh-tools`. Apontar para o farm do
-profile (e não direto para o diretório da versão) faz o symlink sobreviver a
-upgrades. O Node resolve o realpath, então o plugin compartilha a **mesma
-instância de módulo** do harness.
+That is why the preset carries a `node_modules` with a symlink to
+`<DSH_HOME>/profiles/node_modules/@deepseek-ai/dsh-tools`. Pointing at the
+profile's farm (rather than directly at the version directory) keeps the symlink
+alive across upgrades. Node resolves the realpath, so the plugin shares the
+**same module instance** as the harness.
 
-Esse symlink é específico da máquina — é justamente por isso que existe um
-instalador em vez de um diretório de preset versionado. Se você adicionar um
-import novo ao `rtk.js`, crie o symlink correspondente (o instalador mostra o
-padrão).
+That symlink is machine-specific — which is precisely why there is an installer
+instead of a versioned preset directory. If you add a new import to `rtk.js`,
+create the matching symlink (the installer prints the pattern).
 
-> **Detalhe que custa uma hora:** um dsh em execução cacheia o *module job* que
-> falhou para uma dada URL de arquivo. Depois de corrigir a resolução, ele
-> continua reportando o erro antigo para o mesmo caminho. Um processo Node novo
-> resolve na hora — foi assim que este plugin foi depurado.
+> **A detail that costs an hour:** a running dsh caches the *module job* that
+> failed for a given file URL. After you fix resolution, it keeps reporting the
+> old error for the same path. A fresh Node process resolves immediately — that
+> is how this plugin was debugged.
 
-## Ressalvas honestas
+## Honest caveats
 
-- **O preset é um snapshot.** Ele é construído a partir do `standard` da sua
-  instalação no momento do install. Um preset não herda de outro, então depois de
-  atualizar o dsh rode `./install.sh` de novo para pegar o `standard` novo.
-- **Não testado em Windows.** No `standard` a linha `tool-bash` é desabilitada no
-  Windows e `tool-pwsh` assume; a tool funciona através de `ctx.shell` nos dois
-  casos, mas o RTK é uma CLI POSIX-first.
-- **Custo recorrente.** A descrição da tool entra no contexto a cada passo (~200
-  tokens). Ela se paga nos comandos que você deixa de rodar crus, mas não é grátis.
-- **Recuperação de output elidido.** Quando um filtro do RTK corta conteúdo, ele
-  imprime um hash; o agente recupera o trecho com `rtk recall <hash>`. Isso está
-  descrito na própria descrição da tool.
+- **The preset is a snapshot.** It is built from your installation's `standard`
+  at install time. A preset does not inherit from another, so after upgrading
+  dsh run `./install.sh` again to pick up the new `standard`.
+- **Not tested on Windows.** In `standard`, the `tool-bash` row is disabled on
+  Windows and `tool-pwsh` takes over; the tool works through `ctx.shell` either
+  way, but RTK is a POSIX-first CLI.
+- **Recurring cost.** The tool description enters the context on every step
+  (~200 tokens). It pays for itself on the commands you stop running raw, but it
+  is not free.
+- **Recovering elided output.** When an RTK filter cuts content, it prints a
+  hash; the agent recovers the excerpt with `rtk recall <hash>`. That is
+  described in the tool description itself.
 
-## Distribuição como pacote npm (alternativa)
+## Distribution as an npm package (alternative)
 
-Em vez do arquivo preset-local, o plugin pode virar um pacote npm e a linha virar
-um nome de pacote:
+Instead of the preset-local file, the plugin can become an npm package and the
+row a package name:
 
 ```yaml
 - id: tool-rtk
   name: 'dsh-tool-rtk'
 ```
 
-Linhas com nome de pacote são resolvidas a partir da instalação, então o arquivo
-não precisa de shim. O custo é que isso exige `pnpm` e
-`dsh plugin --profile <perfil> add dsh-tool-rtk`, além de publicar no registry (ou
-instalar de git). O caminho por arquivo preset-local foi escolhido por funcionar
-sem nada disso.
+Rows with a package name are resolved from the installation, so the file needs
+no shim. The cost is that this requires `pnpm` and
+`dsh plugin --profile <profile> add dsh-tool-rtk`, plus publishing to the
+registry (or installing from git). The preset-local file path was chosen because
+it works without any of that.
 
-## Licença
+## License
 
-Nenhuma foi escolhida para este código ainda — defina uma antes de publicar.
-O preset gerado é derivado do `standard` que acompanha o dsh, que pertence à sua
-instalação; por isso o instalador o copia da máquina de quem instala, em vez de
-redistribuí-lo.
+[MIT](../LICENSE) © 2026 William-SWS — see the repository root.
+
+The generated preset is derived from the `standard` that ships with dsh, which
+belongs to your installation; that is why the installer copies it from the
+installing machine instead of redistributing it. The `rtk` CLI itself is
+Apache-2.0 and is **not** bundled here — you install it yourself, so no upstream
+license obligation attaches to this plugin.
